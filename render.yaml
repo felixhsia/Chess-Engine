@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: xiangqi-advisor-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false   # 在 Render dashboard 手動填入，不寫進程式碼
