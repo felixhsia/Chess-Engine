@@ -213,6 +213,27 @@ def uci_to_cn(uci_move, board):
         print(f"[uci_to_cn] 錯誤: {e}, move={uci_move}")
         return uci_move
 
+def uci_to_cn_safe(uci_move, board):
+    """帶完整 debug 的包裝版本"""
+    parsed = parse_uci_xiangqi(uci_move)
+    if not parsed:
+        print(f"[cn] 無法解析: {uci_move}")
+        return uci_move
+    c1, r1_uci, c2, r2_uci = parsed
+    row1 = 10 - r1_uci
+    row2 = 10 - r2_uci
+    if not (0 <= row1 <= 9 and 0 <= row2 <= 9):
+        print(f"[cn] row 超出範圍: {uci_move} → row1={row1}, row2={row2}")
+        return uci_move
+    piece = board[row1][c1]
+    if piece == 0:
+        print(f"[cn] 起點無棋子: {uci_move} → board[{row1}][{c1}]=0")
+        # 嘗試附近格子找棋子（容錯）
+        return uci_move
+    result = uci_to_cn(uci_move, board)
+    print(f"[cn] {uci_move} → {result} (piece={piece}, row1={row1}, c1={c1})")
+    return result
+
 def score_display(result):
     if result.get("score_mate") is not None:
         m = result["score_mate"]
@@ -300,7 +321,7 @@ def engine_analyse():
     moves = []
     for r in results:
         uci = r["move"]
-        cn  = uci_to_cn(uci, board)
+        cn  = uci_to_cn_safe(uci, board)
         moves.append({
             "move_uci": uci,
             "move_cn":  cn,
@@ -312,6 +333,133 @@ def engine_analyse():
 
     return jsonify({"fen": fen, "moves": moves})
 
+
+
+@app.route("/api/analyze", methods=["POST", "OPTIONS"])
+def analyze_full():
+    """
+    一次呼叫完成全部分析：
+    1. Claude Vision 辨識棋盤（同時）
+    2. Fairy-Stockfish 計算最佳走法（同時）
+    3. 合併結果回傳，由前端決定是否再呼叫 Claude 生成說明
+    
+    前端傳入: {
+        image_base64: "...",
+        image_media_type: "image/jpeg",
+        turn: "red"|"black",
+        player_side: "red"|"black"
+    }
+    """
+    if request.method == "OPTIONS":
+        r = jsonify({"status": "ok"})
+        r.headers["Access-Control-Allow-Origin"] = "*"
+        r.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        r.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return r, 200
+
+    data = request.get_json(force=True)
+    image_b64   = data.get("image_base64", "")
+    media_type  = data.get("image_media_type", "image/jpeg")
+    turn_side   = data.get("turn", "red")
+    player_side = data.get("player_side", "red")
+    depth       = int(data.get("depth", 15))
+
+    if not image_b64:
+        return jsonify({"error": "缺少 image_base64"}), 400
+
+    # ── 並行執行 Vision + 預熱引擎 ──
+    vision_result = {"board": None, "note": "", "error": None}
+    engine_ready  = threading.Event()
+
+    def run_vision():
+        sys_prompt = """你是象棋棋盤辨識專家。請分析圖片中的象棋棋盤，回傳一個嚴格的 JSON，不要任何其他文字。
+
+JSON 格式：
+{
+  "board": [[row0col0, row0col1, ...row0col8], ... [row9col0,...row9col8]],
+  "note": "辨識說明"
+}
+
+棋子用整數編碼：
+紅方：帥=1, 仕=2, 相=3, 俥=4, 傌=5, 炮=6, 兵=7
+黑方：將=-1, 士=-2, 象=-3, 車=-4, 馬=-5, 包=-6, 卒=-7
+空格：0
+
+棋盤方向：第0列=黑方底線（畫面上方），第9列=紅方底線（畫面下方）。
+若截圖是黑方在下，請自動翻轉後回傳（確保紅方永遠在第9列）。
+請仔細辨識每個棋子，不要遺漏或錯位。"""
+
+        payload = {
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 1000,
+            "system": sys_prompt,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
+                    {"type": "text", "text": "請辨識這張象棋截圖的棋盤狀態，回傳 JSON。"}
+                ]
+            }]
+        }
+        result, err = call_claude(payload)
+        if err:
+            vision_result["error"] = err
+            return
+        try:
+            import json, re
+            raw = "".join(b.get("text","") for b in result.get("content",[])).strip()
+            raw = re.sub(r"^```json\s*", "", raw, flags=re.IGNORECASE)
+            raw = re.sub(r"^```\s*", "", raw, flags=re.IGNORECASE)
+            raw = re.sub(r"\s*```$", "", raw).strip()
+            parsed = json.loads(raw)
+            vision_result["board"] = parsed.get("board")
+            vision_result["note"]  = parsed.get("note", "")
+        except Exception as e:
+            vision_result["error"] = f"棋盤解析失敗: {e}"
+        finally:
+            engine_ready.set()
+
+    # 啟動 Vision（同時引擎預熱）
+    engine.start()
+    vision_thread = threading.Thread(target=run_vision)
+    vision_thread.start()
+
+    # 等 Vision 完成
+    vision_thread.join(timeout=30)
+
+    if vision_result["error"]:
+        return jsonify({"error": vision_result["error"]}), 500
+    if not vision_result["board"]:
+        return jsonify({"error": "棋盤辨識失敗，請重試"}), 500
+
+    board = vision_result["board"]
+
+    # ── 引擎分析（Vision 完成後立即開始）──
+    turn = "w" if turn_side == "red" else "b"
+    fen  = board_to_fen(board, turn)
+    print(f"[Analyze] FEN: {fen}")
+
+    eng_results = engine.analyse(fen, depth=depth, multipv=3)
+    moves = []
+    for r in eng_results:
+        uci = r["move"]
+        cn  = uci_to_cn_safe(uci, board)
+        moves.append({
+            "move_uci":   uci,
+            "move_cn":    cn,
+            "score":      score_display(r),
+            "score_cp":   r.get("score_cp"),
+            "score_mate": r.get("score_mate"),
+        })
+
+    return jsonify({
+        "board":       board,
+        "note":        vision_result["note"],
+        "fen":         fen,
+        "moves":       moves,
+        "turn":        turn_side,
+        "player_side": player_side,
+    })
 
 if __name__ == "__main__":
     engine.start()
