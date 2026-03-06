@@ -145,49 +145,72 @@ def board_to_fen(board, turn="w"):
 PIECE_CN_RED   = {1:'帥',2:'仕',3:'相',4:'俥',5:'傌',6:'炮',7:'兵'}
 PIECE_CN_BLACK = {-1:'將',-2:'士',-3:'象',-4:'車',-5:'馬',-6:'包',-7:'卒'}
 
+def parse_uci_xiangqi(uci_move):
+    """
+    解析象棋 UCI 走法，支援兩位數 rank（如 d10e9）
+    回傳 (c1, r1_uci, c2, r2_uci) 或 None
+    """
+    # 格式: [a-i][0-9]{1,2}[a-i][0-9]{1,2}
+    import re
+    m = re.match(r'^([a-i])(\d{1,2})([a-i])(\d{1,2})$', uci_move)
+    if not m:
+        return None
+    c1 = ord(m.group(1)) - ord('a')
+    r1 = int(m.group(2))
+    c2 = ord(m.group(3)) - ord('a')
+    r2 = int(m.group(4))
+    return c1, r1, c2, r2
+
+COL_NAMES = ['一','二','三','四','五','六','七','八','九']
+
 def uci_to_cn(uci_move, board):
     """
-    將 UCI 走法（如 e2e4）轉為中文記譜（如 炮五平四）
+    將象棋 UCI 走法轉為中文記譜
+    Fairy-Stockfish Xiangqi: rank 0 = 紅方底線(row9), rank 9 = 黑方底線(row0)
     """
-    if not uci_move or len(uci_move) < 4:
+    if not uci_move:
+        return uci_move
+    parsed = parse_uci_xiangqi(uci_move)
+    if not parsed:
         return uci_move
     try:
-        c1 = ord(uci_move[0]) - ord('a')   # 0-8
-        r1_uci = int(uci_move[1])           # 0-9, rank0=紅底
-        c2 = ord(uci_move[2]) - ord('a')
-        r2_uci = int(uci_move[3])
+        c1, r1_uci, c2, r2_uci = parsed
 
-        # 轉回 array row (row0=黑底, row9=紅底)
-        row1 = 9 - r1_uci
-        row2 = 9 - r2_uci
+        # Fairy-Stockfish 象棋 rank 是 1-indexed: rank1=紅底(row9), rank10=黑底(row0)
+        row1 = 10 - r1_uci
+        row2 = 10 - r2_uci
+
+        if row1 < 0 or row1 > 9 or row2 < 0 or row2 > 9:
+            return uci_move
 
         piece = board[row1][c1]
         if piece == 0:
             return uci_move
 
-        if piece > 0:  # 紅方，欄位從右往左數 1-9
+        if piece > 0:
+            # 紅方：欄位從右往左，col8=一, col0=九
             name = PIECE_CN_RED.get(piece, '?')
-            from_col = 9 - c1
-            to_col   = 9 - c2
-        else:           # 黑方，欄位從左往右數 1-9
+            from_col = COL_NAMES[8 - c1]
+            to_col   = COL_NAMES[8 - c2]
+        else:
+            # 黑方：欄位從左往右，col0=一, col8=九
             name = PIECE_CN_BLACK.get(piece, '?')
-            from_col = c1 + 1
-            to_col   = c2 + 1
+            from_col = COL_NAMES[c1]
+            to_col   = COL_NAMES[c2]
 
         if row1 == row2:
-            action = "平"
-            return f"{name}{from_col}{action}{to_col}"
-        elif (piece > 0 and row2 < row1) or (piece < 0 and row2 > row1):
+            return f"{name}{from_col}平{to_col}"
+
+        # 進退判斷：紅方 row 數字減小=進，黑方 row 數字增大=進
+        if (piece > 0 and row2 < row1) or (piece < 0 and row2 > row1):
             action = "進"
         else:
             action = "退"
 
         steps = abs(row2 - row1)
-        # 車炮兵橫移特殊：進退用步數，平用目標欄
-        if piece in (4,-4,6,-6):  # 俥車炮包直走步數有意義
-            return f"{name}{from_col}{action}{steps}"
         return f"{name}{from_col}{action}{steps}"
-    except Exception:
+    except Exception as e:
+        print(f"[uci_to_cn] 錯誤: {e}, move={uci_move}")
         return uci_move
 
 def score_display(result):
