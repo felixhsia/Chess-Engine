@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>象棋軍師</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;900&family=Courier+Prime:wght@400;700&display=swap');
+  :root {
+    --ink:#1a1209;--paper:#f5ead6;--paper2:#ede0c4;--red:#c0392b;--gold:#b8860b;--border:#8b6914;--shadow:rgba(26,18,9,0.18);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--paper);color:var(--ink);font-family:'Noto Serif TC',serif;min-height:100vh;
+    background-image:repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(139,105,20,0.07) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(139,105,20,0.05) 40px);}
+  header{text-align:center;padding:36px 20px 20px;position:relative;}
+  header::after{content:'';display:block;width:200px;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:16px auto 0;}
+  .title-cn{font-size:clamp(2.4rem,6vw,3.6rem);font-weight:900;letter-spacing:.15em;color:var(--red);text-shadow:3px 3px 0 rgba(192,57,43,.18);line-height:1;}
+  .title-sub{font-size:.85rem;letter-spacing:.3em;color:var(--gold);margin-top:6px;font-family:'Courier Prime',monospace;text-transform:uppercase;}
+  .seal{position:absolute;top:20px;right:28px;width:52px;height:52px;border:2px solid var(--red);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.7rem;color:var(--red);letter-spacing:.1em;writing-mode:vertical-rl;font-weight:700;opacity:.7;transform:rotate(8deg);}
+  .container{max-width:860px;margin:0 auto;padding:0 20px 60px;}
+  .section-label{font-size:.7rem;letter-spacing:.25em;color:var(--gold);font-family:'Courier Prime',monospace;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+  .section-label::before,.section-label::after{content:'◆';font-size:.5rem;opacity:.5;}
+  .drop-zone{border:2px dashed var(--border);background:var(--paper2);border-radius:6px;padding:32px 20px;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;}
+  .drop-zone:hover,.drop-zone.drag-over{border-color:var(--red);background:#f9f0e0;}
+  .drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+  .drop-icon{font-size:2.4rem;margin-bottom:8px;opacity:.6;}
+  .drop-text{font-size:.9rem;color:#6b5022;line-height:1.6;}
+  .drop-hint{font-size:.75rem;color:#9a7840;margin-top:4px;font-family:'Courier Prime',monospace;}
+  #preview-area{display:none;margin-top:14px;position:relative;}
+  #preview-img{max-width:100%;max-height:320px;display:block;margin:0 auto;border:2px solid var(--border);border-radius:4px;box-shadow:4px 4px 0 var(--shadow);}
+  .preview-remove{position:absolute;top:6px;right:6px;background:var(--red);color:white;border:none;border-radius:50%;width:26px;height:26px;font-size:.85rem;cursor:pointer;line-height:26px;text-align:center;}
+  .options-row{display:flex;gap:16px;flex-wrap:wrap;margin:16px 0;align-items:center;}
+  .option-group{display:flex;flex-direction:column;gap:6px;flex:1;min-width:140px;}
+  .option-label{font-size:.7rem;letter-spacing:.2em;color:var(--gold);font-family:'Courier Prime',monospace;}
+  .btn-group{display:flex;gap:8px;}
+  .toggle-btn{flex:1;padding:8px 14px;border:1.5px solid var(--border);background:var(--paper2);color:var(--ink);font-family:'Noto Serif TC',serif;font-size:.85rem;cursor:pointer;border-radius:4px;transition:all .15s;font-weight:600;}
+  .toggle-btn.active-red{background:var(--red);color:white;border-color:var(--red);}
+  .toggle-btn.active-black{background:#1a1209;color:#f5ead6;border-color:#1a1209;}
+  .analyze-btn{width:100%;padding:14px;background:var(--red);color:white;border:none;font-family:'Noto Serif TC',serif;font-size:1rem;font-weight:700;letter-spacing:.15em;cursor:pointer;border-radius:4px;transition:all .2s;box-shadow:3px 3px 0 rgba(192,57,43,.3);margin:10px 0 24px;position:relative;}
+  .analyze-btn:hover:not(:disabled){background:#a93226;transform:translateY(-1px);}
+  .analyze-btn:disabled{opacity:.55;cursor:not-allowed;transform:none;}
+  .loading-bar{display:none;height:3px;background:var(--paper2);border-radius:2px;overflow:hidden;margin-bottom:16px;}
+  .loading-bar.active{display:block;}
+  .loading-bar-inner{height:100%;background:linear-gradient(90deg,var(--red),var(--gold),var(--red));background-size:200% 100%;animation:shimmer 1.2s infinite;width:60%;border-radius:2px;}
+  @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  .thinking-steps{display:none;margin-bottom:16px;padding:12px 16px;background:var(--paper2);border-left:3px solid var(--gold);border-radius:0 4px 4px 0;font-size:.8rem;color:#7a5c20;font-family:'Courier Prime',monospace;line-height:1.9;}
+  .thinking-steps.active{display:block;}
+  .thinking-line{opacity:0;animation:fadeIn .3s forwards;}
+  @keyframes fadeIn{to{opacity:1}}
+  /* Board */
+  .board-wrap{margin-bottom:18px;background:var(--paper2);border:1.5px solid var(--border);border-radius:6px;padding:14px;}
+  .board-title{font-size:.72rem;letter-spacing:.2em;color:var(--gold);font-family:'Courier Prime',monospace;margin-bottom:8px;}
+  .xiangqi-board{width:100%;max-width:380px;display:block;margin:0 auto;}
+  .board-row{display:flex;}
+  .board-cell{flex:1;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:#f0e4c8;font-size:clamp(.68rem,1.7vw,.92rem);border:.5px solid rgba(139,105,20,.2);position:relative;min-width:0;}
+  .board-cell.red-piece{color:var(--red);font-weight:700;}
+  .board-cell.black-piece{color:#111;font-weight:700;}
+  .board-cell.empty{color:rgba(139,105,20,.2);font-size:.5em;}
+  .board-cell.hl-from{background:rgba(212,160,23,.45);}
+  .board-cell.hl-to{background:rgba(192,57,43,.32);}
+  .board-cell.hl-to::after{content:'▶';position:absolute;font-size:.5em;bottom:1px;right:1px;color:var(--red);opacity:.7;}
+  /* Result */
+  #result-area{display:none;}
+  #result-area.visible{display:block;animation:slideUp .4s ease;}
+  @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+  .result-header{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+  .result-badge{background:var(--red);color:white;font-size:.7rem;letter-spacing:.15em;padding:3px 10px;border-radius:2px;font-family:'Courier Prime',monospace;}
+  .result-divider{flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent);}
+  .situation-card{margin-bottom:14px;padding:10px 14px;background:var(--paper2);border-left:3px solid var(--red);border-radius:0 4px 4px 0;font-size:.88rem;line-height:1.7;color:#3a2a0a;}
+  .warn-card{margin-bottom:14px;padding:10px 14px;background:#fff8f7;border-left:3px solid #e74c3c;border-radius:0 4px 4px 0;font-size:.85rem;line-height:1.7;color:#7a1a0a;}
+  .engine-tag{display:inline-block;background:#1a1209;color:var(--gold);font-size:.65rem;font-family:'Courier Prime',monospace;padding:2px 8px;border-radius:2px;letter-spacing:.1em;margin-bottom:10px;}
+  .analysis-card{background:var(--paper2);border:1.5px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:12px;}
+  .card-step-header{display:flex;align-items:center;gap:10px;padding:10px 16px;background:linear-gradient(90deg,rgba(192,57,43,.08),transparent);border-bottom:1px solid rgba(139,105,20,.2);}
+  .step-number{width:26px;height:26px;background:var(--red);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;flex-shrink:0;}
+  .step-move{font-weight:700;font-size:.95rem;color:var(--red);letter-spacing:.08em;}
+  .step-score{font-size:.68rem;font-family:'Courier Prime',monospace;color:#888;margin-left:6px;}
+  .step-type{font-size:.68rem;font-family:'Courier Prime',monospace;color:var(--gold);letter-spacing:.15em;margin-left:auto;}
+  .card-body{padding:12px 16px;font-size:.88rem;line-height:1.9;color:#3a2a0a;}
+  .summary-card{background:linear-gradient(135deg,#1a1209,#2e1e0a);color:var(--paper);border-radius:6px;padding:18px 20px;margin-top:6px;}
+  .summary-label{font-size:.68rem;letter-spacing:.25em;color:#d4a017;font-family:'Courier Prime',monospace;margin-bottom:8px;}
+  .summary-text{font-size:.9rem;line-height:1.8;color:#e8d8b8;}
+  .error-card{background:#fdf0ee;border:1.5px solid var(--red);border-radius:6px;padding:16px 20px;color:#8b2012;font-size:.88rem;line-height:1.7;}
+  /* Engine status badge */
+  .engine-status{font-size:.72rem;font-family:'Courier Prime',monospace;color:#7a5c20;margin-bottom:6px;padding:6px 12px;background:var(--paper2);border-radius:4px;display:inline-block;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="seal">軍師</div>
+  <div class="title-cn">象棋軍師</div>
+  <div class="title-sub">JS Engine + Claude Vision · No Server Required</div>
+</header>
+
+<div class="container">
+
+  <div class="upload-section" style="margin-bottom:20px;">
+    <div class="section-label">上傳棋局截圖</div>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept="image/*">
+      <div class="drop-icon">♟</div>
+      <div class="drop-text">點擊或拖曳上傳棋盤截圖</div>
+      <div class="drop-hint">手機 App 截圖 · JPG / PNG · 建議清晰全景</div>
+    </div>
+    <div id="preview-area">
+      <img id="preview-img" src="" alt="preview">
+      <button class="preview-remove" id="removeBtn">✕</button>
+    </div>
+  </div>
+
+  <div class="options-row">
+    <div class="option-group">
+      <div class="option-label">我執哪方</div>
+      <div class="btn-group">
+        <button class="toggle-btn active-red" id="btnRed" onclick="setSide('red')">紅方</button>
+        <button class="toggle-btn" id="btnBlack" onclick="setSide('black')">黑方</button>
+      </div>
+    </div>
+    <div class="option-group">
+      <div class="option-label">輪誰走棋</div>
+      <div class="btn-group">
+        <button class="toggle-btn active-red" id="btnTurnRed" onclick="setTurn('red')">紅先</button>
+        <button class="toggle-btn" id="btnTurnBlack" onclick="setTurn('black')">黑先</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="engineStatus" class="engine-status">⚙ JS 引擎就緒 · depth=3 · α-β剪枝 + 位置分表 + 開局庫</div>
+
+  <button class="analyze-btn" id="analyzeBtn" onclick="analyze()" disabled>✦ 請求軍師分析</button>
+
+  <div class="loading-bar" id="loadingBar"><div class="loading-bar-inner"></div></div>
+  <div class="thinking-steps" id="thinkingSteps"></div>
+  <div id="result-area"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  XIANGQI ENGINE (JS port of chess.py)
+// ═══════════════════════════════════════════════════════
+
+const EMPTY=0,RED=1,BLACK=-1;
+const R_KING=1,R_ADV=2,R_ELE=3,R_ROOK=4,R_KNIGHT=5,R_CANNON=6,R_PAWN=7;
+const B_KING=-1,B_ADV=-2,B_ELE=-3,B_ROOK=-4,B_KNIGHT=-5,B_CANNON=-6,B_PAWN=-7;
+
+const PIECE_VALUES={1:10000,2:120,3:120,4:600,5:300,6:320,7:90};
+
+// Position tables (red perspective; black mirrors vertically)
+const POS_PAWN=[
+  [0,0,0,0,0,0,0,0,0],
+  [18,36,36,36,36,36,36,36,18],
+  [18,34,34,34,34,34,34,34,18],
+  [16,30,30,30,30,30,30,30,16],
+  [14,26,26,26,26,26,26,26,14],
+  [2,0,8,0,14,0,8,0,2],
+  [0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0],
+];
+const POS_KNIGHT=[
+  [0,8,16,12,4,12,16,8,0],
+  [4,16,28,24,18,24,28,16,4],
+  [4,22,32,30,26,30,32,22,4],
+  [6,20,30,26,22,26,30,20,6],
+  [4,16,24,22,18,22,24,16,4],
+  [2,12,20,18,14,18,20,12,2],
+  [0,8,14,12,8,12,14,8,0],
+  [0,4,8,6,4,6,8,4,0],
+  [0,2,4,4,0,4,4,2,0],
+  [0,0,2,2,0,2,2,0,0],
+];
+const POS_CANNON=[
+  [6,4,0,-10,-12,-10,0,4,6],
+  [2,2,0,-4,-14,-4,0,2,2],
+  [2,6,4,0,-10,0,4,6,2],
+  [0,0,0,2,-6,2,0,0,0],
+  [0,0,4,6,-2,6,4,0,0],
+  [0,0,2,4,0,4,2,0,0],
+  [0,0,0,0,-2,0,0,0,0],
+  [4,10,10,10,10,10,10,10,4],
+  [0,0,0,2,6,2,0,0,0],
+  [-2,0,10,6,14,6,10,0,-2],
+];
+const POS_ROOK=[
+  [14,14,12,18,16,18,12,14,14],
+  [16,20,18,24,26,24,18,20,16],
+  [12,12,12,18,18,18,12,12,12],
+  [12,18,16,22,22,22,16,18,12],
+  [8,14,12,18,18,18,12,14,8],
+  [6,10,10,14,14,14,10,10,6],
+  [4,8,8,12,12,12,8,8,4],
+  [4,4,4,8,10,8,4,4,4],
+  [0,0,4,6,6,6,4,0,0],
+  [-2,0,4,4,4,4,4,0,-2],
+];
+const POS_ELEPHANT=[
+  [0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],
+  [0,0,20,0,0,0,20,0,0],[0,0,0,0,0,0,0,0,0],[20,0,0,0,20,0,0,0,20],[0,0,0,0,0,0,0,0,0],[0,0,20,0,0,0,20,0,0],
+];
+const POS_ADVISOR=[
+  [0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,20,0,20,0,0,0],[0,0,0,0,20,0,0,0,0],[0,0,0,20,0,20,0,0,0],
+];
+const POS_KING=[
+  [0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,10,0,0,0,0],[0,0,0,-4,20,-4,0,0,0],[0,0,0,-6,24,-6,0,0,0],
+];
+const POS_TABLES={1:POS_KING,2:POS_ADVISOR,3:POS_ELEPHANT,4:POS_ROOK,5:POS_KNIGHT,6:POS_CANNON,7:POS_PAWN};
+
+const INIT_BOARD=[
+  [-4,-5,-3,-2,-1,-2,-3,-5,-4],
+  [0,0,0,0,0,0,0,0,0],
+  [0,-6,0,0,0,0,0,-6,0],
+  [-7,0,-7,0,-7,0,-7,0,-7],
+  [0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0],
+  [7,0,7,0,7,0,7,0,7],
+  [0,6,0,0,0,0,0,6,0],
+  [0,0,0,0,0,0,0,0,0],
+  [4,5,3,2,1,2,3,5,4],
+];
+
+// Opening book: red moves as [from_r, from_c, to_r, to_c]
+const OPENING_BOOK_RED = [
+  [[7,1,7,4],[9,1,7,2],[9,0,9,1]],  // 中炮 + 傌二進三 + 俥一平二
+  [[7,7,7,4],[9,7,7,6],[9,8,9,7]],  // 中炮左 + 傌八進七
+  [[9,2,7,4],[9,1,7,2],[7,1,7,4]],  // 飛相 + 傌
+  [[6,2,5,2],[9,1,7,2],[7,1,7,4]],  // 仙人指路
+];
+const OPENING_BOOK_BLACK = [
+  [[3,6,4,6],[0,7,2,6],[0,8,0,7]],  // 卒7進1 + 馬8進7
+  [[0,1,2,2],[0,7,2,6],[0,8,0,7]],  // 屏風馬
+  [[0,7,2,6],[0,8,1,8],[0,1,2,2]],  // 單提馬
+];
+
+class XiangqiBoard {
+  constructor(board, player) {
+    this.board = board ? board.map(r=>r.slice()) : INIT_BOARD.map(r=>r.slice());
+    this.player = player !== undefined ? player : RED;
+    this.history = [];
+  }
+  clone() {
+    const b = new XiangqiBoard(this.board, this.player);
+    b.history = this.history.map(h=>({...h}));
+    return b;
+  }
+  inBounds(r,c){ return r>=0&&r<10&&c>=0&&c<9; }
+  color(p){ return p>0?RED:(p<0?BLACK:0); }
+  countBetween(r1,c1,r2,c2){
+    let n=0;
+    if(r1===r2){ const a=Math.min(c1,c2),b=Math.max(c1,c2); for(let c=a+1;c<b;c++) if(this.board[r1][c]!==0) n++; }
+    else if(c1===c2){ const a=Math.min(r1,r2),b=Math.max(r1,r2); for(let r=a+1;r<b;r++) if(this.board[r][c1]!==0) n++; }
+    return n;
+  }
+  findPiece(code){
+    for(let r=0;r<10;r++) for(let c=0;c<9;c++) if(this.board[r][c]===code) return [r,c];
+    return null;
+  }
+  _basicValid(r1,c1,r2,c2,ignTurn=false){
+    if(!this.inBounds(r1,c1)||!this.inBounds(r2,c2)) return false;
+    const p=this.board[r1][c1], t=this.board[r2][c2];
+    if(p===0||(r1===r2&&c1===c2)) return false;
+    if(!ignTurn && this.color(p)!==this.player) return false;
+    if(this.color(t)===this.color(p)) return false;
+    const dr=r2-r1, dc=c2-c1, pa=Math.abs(p);
+    if(pa===7){ // pawn
+      if(Math.abs(dr)+Math.abs(dc)!==1) return false;
+      if(p>0&&dr>=0) return false;
+      if(p<0&&dr<=0) return false;
+      if(p>0&&r1>=5&&dc!==0) return false;
+      if(p<0&&r1<=4&&dc!==0) return false;
+      return true;
+    }
+    if(pa===5){ // knight
+      if(!((Math.abs(dr)===2&&Math.abs(dc)===1)||(Math.abs(dr)===1&&Math.abs(dc)===2))) return false;
+      let br,bc;
+      if(Math.abs(dr)===2){br=r1+(dr>0?1:-1);bc=c1;} else{br=r1;bc=c1+(dc>0?1:-1);}
+      return this.board[br][bc]===0;
+    }
+    if(pa===6){ // cannon
+      if(r1!==r2&&c1!==c2) return false;
+      const btw=this.countBetween(r1,c1,r2,c2);
+      return (t===0&&btw===0)||(t!==0&&btw===1);
+    }
+    if(pa===4){ // rook
+      return (r1===r2||c1===c2)&&this.countBetween(r1,c1,r2,c2)===0;
+    }
+    if(pa===2||pa===1){ // advisor / king
+      if(pa===2&&(Math.abs(dr)!==1||Math.abs(dc)!==1)) return false;
+      if(pa===1&&Math.abs(dr)+Math.abs(dc)!==1) return false;
+      const [rmin,rmax]=p>0?[7,9]:[0,2];
+      return r2>=rmin&&r2<=rmax&&c2>=3&&c2<=5;
+    }
+    if(pa===3){ // elephant
+      if(Math.abs(dr)!==2||Math.abs(dc)!==2) return false;
+      if(p>0&&r2<=4) return false;
+      if(p<0&&r2>=5) return false;
+      const er=(r1+r2)>>1, ec=(c1+c2)>>1;
+      return this.board[er][ec]===0;
+    }
+    return false;
+  }
+  isValid(r1,c1,r2,c2,ignTurn=false){
+    if(!this._basicValid(r1,c1,r2,c2,ignTurn)) return false;
+    const movingColor=this.color(this.board[r1][c1]);
+    const rec=this.makeMove(r1,c1,r2,c2);
+    const inCk=this.isCheck(movingColor);
+    this.undoMove(rec);
+    return !inCk;
+  }
+  makeMove(r1,c1,r2,c2){
+    const rec={r1,c1,r2,c2,cap:this.board[r2][c2],moved:this.board[r1][c1],player:this.player};
+    this.history.push(rec);
+    this.board[r2][c2]=this.board[r1][c1];
+    this.board[r1][c1]=0;
+    this.player=this.player===RED?BLACK:RED;
+    return rec;
+  }
+  undoMove(rec){
+    this.board[rec.r1][rec.c1]=rec.moved;
+    this.board[rec.r2][rec.c2]=rec.cap;
+    this.player=rec.player;
+    if(this.history.length&&this.history[this.history.length-1]===rec) this.history.pop();
+  }
+  isCheck(color){
+    const kp=this.findPiece(color===RED?R_KING:B_KING);
+    if(!kp) return false;
+    const [kr,kc]=kp, opp=color===RED?BLACK:RED;
+    for(let r=0;r<10;r++) for(let c=0;c<9;c++){
+      if(this.color(this.board[r][c])===opp && this._basicValid(r,c,kr,kc,true)) return true;
+    }
+    const rk=this.findPiece(R_KING), bk=this.findPiece(B_KING);
+    if(rk&&bk&&rk[1]===bk[1]&&this.countBetween(rk[0],rk[1],bk[0],bk[1])===0) return true;
+    return false;
+  }
+  legalMoves(color){
+    color=color||this.player;
+    const orig=this.player; this.player=color;
+    const moves=[];
+    for(let r1=0;r1<10;r1++) for(let c1=0;c1<9;c1++){
+      if(this.color(this.board[r1][c1])!==color) continue;
+      for(let r2=0;r2<10;r2++) for(let c2=0;c2<9;c2++){
+        if(this.isValid(r1,c1,r2,c2)) moves.push([r1,c1,r2,c2]);
+      }
+    }
+    this.player=orig;
+    return moves;
+  }
+  evaluate(persp){
+    persp=persp||this.player;
+    let score=0;
+    for(let r=0;r<10;r++) for(let c=0;c<9;c++){
+      const p=this.board[r][c]; if(p===0) continue;
+      const pa=Math.abs(p);
+      let val=PIECE_VALUES[pa]||0;
+      const tbl=POS_TABLES[pa];
+      if(tbl) val+=p>0?tbl[r][c]:tbl[9-r][c];
+      score+=p>0?val:-val;
+    }
+    return persp===RED?score:-score;
+  }
+  isCheckmate(color){
+    return this.isCheck(color)&&this.legalMoves(color).length===0;
+  }
+}
+
+// ── AI ──
+class XiangqiAI {
+  constructor(depth=3){ this.depth=depth; }
+
+  _moveScore(board,mv){
+    const cap=board.board[mv[2]][mv[3]];
+    if(cap!==0){
+      const atk=PIECE_VALUES[Math.abs(board.board[mv[0]][mv[1]])]||0;
+      const vic=PIECE_VALUES[Math.abs(cap)]||0;
+      return vic*10-atk;
+    }
+    return 0;
+  }
+  _sorted(board,moves){
+    return moves.slice().sort((a,b)=>this._moveScore(board,b)-this._moveScore(board,a));
+  }
+  _minimax(board,depth,alpha,beta,maxColor){
+    if(depth===0) return [board.evaluate(maxColor),null];
+    let moves=board.legalMoves(board.player);
+    if(!moves.length){
+      if(board.isCheck(board.player)) return [board.player===maxColor?-999999:999999,null];
+      return [0,null];
+    }
+    moves=this._sorted(board,moves);
+    let best=null;
+    if(board.player===maxColor){
+      let bv=-1e9;
+      for(const m of moves){
+        const rec=board.makeMove(...m);
+        const [v]=this._minimax(board,depth-1,alpha,beta,maxColor);
+        board.undoMove(rec);
+        if(v>bv){bv=v;best=m;}
+        alpha=Math.max(alpha,bv);
+        if(beta<=alpha) break;
+      }
+      return [bv,best];
+    } else {
+      let bv=1e9;
+      for(const m of moves){
+        const rec=board.makeMove(...m);
+        const [v]=this._minimax(board,depth-1,alpha,beta,maxColor);
+        board.undoMove(rec);
+        if(v<bv){bv=v;best=m;}
+        beta=Math.min(beta,bv);
+        if(beta<=alpha) break;
+      }
+      return [bv,best];
+    }
+  }
+  getOpeningMove(history,player){
+    const book=player===RED?OPENING_BOOK_RED:OPENING_BOOK_BLACK;
+    const mine=history.filter(h=>h.player===player);
+    const step=mine.length;
+    const cands=[];
+    for(const line of book){
+      if(step>=line.length) continue;
+      let ok=true;
+      for(let i=0;i<mine.length;i++){
+        if(i>=line.length){ok=false;break;}
+        const e=line[i], h=mine[i];
+        if(e[0]!==h.r1||e[1]!==h.c1||e[2]!==h.r2||e[3]!==h.c2){ok=false;break;}
+      }
+      if(ok) cands.push(line[step]);
+    }
+    if(cands.length) return cands[Math.floor(Math.random()*cands.length)];
+    return null;
+  }
+  suggest(board){
+    const op=this.getOpeningMove(board.history,board.player);
+    if(op){
+      const [r1,c1,r2,c2]=op;
+      if(board.isValid(r1,c1,r2,c2)) return {move:op,fromBook:true};
+    }
+    const [score,move]=this._minimax(board,this.depth,-1e9,1e9,board.player);
+    return {move,score,fromBook:false};
+  }
+  // Get top N moves with scores and analysis
+  topMoves(board,n=3){
+    const moves=this._sorted(board,board.legalMoves(board.player));
+    const results=[];
+    for(let i=0;i<Math.min(n,moves.length);i++){
+      const m=moves[i];
+      const rec=board.makeMove(...m);
+      // Search one level deeper to evaluate
+      const [v]=this._minimax(board,Math.max(1,this.depth-1),-1e9,1e9,board.player===RED?BLACK:RED);
+      board.undoMove(rec);
+      results.push({move:m, score:-v});
+    }
+    // Sort by score
+    results.sort((a,b)=>b.score-a.score);
+    return results.slice(0,n);
+  }
+}
+
+// ── Piece name helpers ──
+const PIECE_NAMES = {
+  1:'帥',2:'仕',3:'相',4:'俥',5:'傌',6:'炮',7:'兵',
+  '-1':'將','-2':'士','-3':'象','-4':'車','-5':'馬','-6':'包','-7':'卒'
+};
+const RED_SET=new Set([1,2,3,4,5,6,7]);
+const BLK_SET=new Set([-1,-2,-3,-4,-5,-6,-7]);
+function pName(p){ return PIECE_NAMES[p]||'.'; }
+function colName(c){ return ['一','二','三','四','五','六','七','八','九'][c]||c; }
+function moveNotation(board_before, mv){
+  const [r1,c1,r2,c2]=mv;
+  const p=board_before[r1][c1];
+  const name=pName(p);
+  // Simple notation: 棋子+起始列+動作+目標列
+  const fromCol=p>0?(8-c1+1):(c1+1); // red counts right to left col 9..1, black left to right
+  const toCol  =p>0?(8-c2+1):(c2+1);
+  let action;
+  if(r1===r2) action='平';
+  else if((p>0&&r2<r1)||(p<0&&r2>r1)) action='進';
+  else action='退';
+  if(action==='平') return `${name}${fromCol}平${toCol}`;
+  const steps=Math.abs(r2-r1);
+  return `${name}${fromCol}${action}${steps}`;
+}
+
+// ═══════════════════════════════════════════════════════
+//  UI STATE
+// ═══════════════════════════════════════════════════════
+let imageBase64=null, imageMediaType='image/jpeg';
+let playerSide=RED, turnSide=RED;
+
+function setSide(s){
+  playerSide=s==='red'?RED:BLACK;
+  document.getElementById('btnRed').className='toggle-btn'+(s==='red'?' active-red':'');
+  document.getElementById('btnBlack').className='toggle-btn'+(s==='black'?' active-black':'');
+}
+function setTurn(s){
+  turnSide=s==='red'?RED:BLACK;
+  document.getElementById('btnTurnRed').className='toggle-btn'+(s==='red'?' active-red':'');
+  document.getElementById('btnTurnBlack').className='toggle-btn'+(s==='black'?' active-black':'');
+}
+
+// File upload
+const dropZone=document.getElementById('dropZone');
+const fileInput=document.getElementById('fileInput');
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('drag-over');});
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('drag-over');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
+fileInput.addEventListener('change',e=>{if(e.target.files[0])handleFile(e.target.files[0]);});
+document.getElementById('removeBtn').addEventListener('click',()=>{
+  imageBase64=null;
+  document.getElementById('preview-area').style.display='none';
+  document.getElementById('analyzeBtn').disabled=true;
+  fileInput.value='';
+  document.getElementById('result-area').className='';
+  document.getElementById('result-area').innerHTML='';
+});
+function handleFile(f){
+  imageMediaType=f.type||'image/jpeg';
+  const r=new FileReader();
+  r.onload=e=>{
+    imageBase64=e.target.result.split(',')[1];
+    document.getElementById('preview-img').src=e.target.result;
+    document.getElementById('preview-area').style.display='block';
+    document.getElementById('analyzeBtn').disabled=false;
+  };
+  r.readAsDataURL(f);
+}
+
+// Thinking animation
+const THINKING_MSGS=['▸ 傳送截圖至 Claude Vision...','▸ 辨識棋盤佈局與棋子...','▸ 建構棋盤陣列...','▸ JS 引擎載入棋局...','▸ α-β 搜尋最佳走法 (depth=3)...','▸ 評估前三候選步...','▸ 生成戰略說明...'];
+function startThinking(){
+  const el=document.getElementById('thinkingSteps');
+  el.innerHTML=''; el.classList.add('active');
+  THINKING_MSGS.forEach((m,i)=>setTimeout(()=>{
+    const d=document.createElement('div');
+    d.className='thinking-line'; d.textContent=m; el.appendChild(d);
+  },i*420));
+}
+function stopThinking(){
+  document.getElementById('thinkingSteps').classList.remove('active');
+  document.getElementById('loadingBar').classList.remove('active');
+}
+
+// Board render
+function renderBoard(bArr, hlFrom, hlTo){
+  let h='<div class="xiangqi-board">';
+  for(let r=0;r<10;r++){
+    h+='<div class="board-row">';
+    for(let c=0;c<9;c++){
+      const p=bArr[r][c];
+      let cls='board-cell';
+      if(hlFrom&&hlFrom[0]===r&&hlFrom[1]===c) cls+=' hl-from';
+      if(hlTo&&hlTo[0]===r&&hlTo[1]===c) cls+=' hl-to';
+      if(p!==0){
+        cls+=RED_SET.has(p)?' red-piece':' black-piece';
+        h+=`<div class="${cls}">${pName(p)}</div>`;
+      } else {
+        h+=`<div class="${cls} empty">·</div>`;
+      }
+    }
+    h+='</div>';
+  }
+  return h+'</div>';
+}
+
+// ═══════════════════════════════════════════════════════
+//  MAIN: analyze()
+// ═══════════════════════════════════════════════════════
+async function analyze(){
+  if(!imageBase64) return;
+  const btn=document.getElementById('analyzeBtn');
+  btn.disabled=true;
+  document.getElementById('loadingBar').classList.add('active');
+  startThinking();
+  document.getElementById('result-area').className='';
+  document.getElementById('result-area').innerHTML='';
+
+  // ── Step 1: Claude Vision → board array ──
+  const sysVision=`你是象棋棋盤辨識專家。請分析圖片中的象棋棋盤，回傳一個嚴格的 JSON，不要有任何其他文字。
+
+JSON 格式：
+{
+  "board": [[row0col0, row0col1, ...row0col8], ... [row9col0,...row9col8]],
+  "note": "辨識說明"
+}
+
+棋子用整數編碼：
+紅方：帥=1, 仕=2, 相=3, 俥=4, 傌=5, 炮=6, 兵=7
+黑方：將=-1, 士=-2, 象=-3, 車=-4, 馬=-5, 包=-6, 卒=-7
+空格：0
+
+棋盤方向：第0列=黑方底線（畫面上方），第9列=紅方底線（畫面下方）。
+若截圖是黑方在下，請自動翻轉後回傳（確保紅方永遠在第9列）。
+請仔細辨識每個棋子，不要遺漏或錯位。`;
+
+  // ★ 將 RENDER_API_URL 換成你的 Render 服務網址
+  const RENDER_API_URL = "https://chess-engine-hzkd.onrender.com/api/messages";
+
+  let engineBoard=null, visionNote='';
+  try {
+    const res=await fetch(RENDER_API_URL,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        model:"claude-sonnet-4-20250514",
+        max_tokens:1000,
+        system:sysVision,
+        messages:[{role:"user",content:[
+          {type:"image",source:{type:"base64",media_type:imageMediaType,data:imageBase64}},
+          {type:"text",text:"請辨識這張象棋截圖的棋盤狀態，回傳 JSON。"}
+        ]}]
+      })
+    });
+    const data=await res.json();
+    if(data.error) throw new Error(data.error.message);
+    let raw=data.content.map(b=>b.text||'').join('').trim();
+    raw=raw.replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/\s*```$/i,'').trim();
+    const parsed=JSON.parse(raw);
+    engineBoard=parsed.board;
+    visionNote=parsed.note||'';
+  } catch(e){
+    stopThinking();
+    document.getElementById('result-area').innerHTML=`<div class="error-card"><strong>⚠ 棋盤辨識失敗</strong><br><br>${e.message}<br><br>請確認截圖清晰、棋盤完整可見後重試。</div>`;
+    document.getElementById('result-area').className='visible';
+    btn.disabled=false; return;
+  }
+
+  // ── Step 2: JS Engine analysis ──
+  let engineResults=[];
+  let engineBoardObj=null;
+  try {
+    engineBoardObj=new XiangqiBoard(engineBoard, turnSide);
+    const ai=new XiangqiAI(3);
+
+    // Check opening book first
+    const opMove=ai.getOpeningMove(engineBoardObj.history, engineBoardObj.player);
+
+    // Get top 3 moves from engine
+    const tops=ai.topMoves(engineBoardObj, 3);
+    engineResults=tops.map((t,i)=>{
+      const mv=t.move;
+      const notation=moveNotation(engineBoard, mv);
+      const fromBook=i===0&&opMove&&opMove[0]===mv[0]&&opMove[1]===mv[1]&&opMove[2]===mv[2]&&opMove[3]===mv[3];
+      return {
+        step_num:i+1,
+        move:notation,
+        from:[mv[0],mv[1]], to:[mv[2],mv[3]],
+        score:t.score,
+        fromBook
+      };
+    });
+  } catch(e){
+    stopThinking();
+    document.getElementById('result-area').innerHTML=`<div class="error-card"><strong>⚠ 引擎分析失敗</strong><br><br>${e.message}</div>`;
+    document.getElementById('result-area').className='visible';
+    btn.disabled=false; return;
+  }
+
+  // ── Step 3: Claude generates strategic explanation ──
+  const sideLabel=playerSide===RED?'紅方':'黑方';
+  const turnLabel=turnSide===RED?'紅方':'黑方';
+  const movesDesc=engineResults.map(r=>`第${r.step_num}步：${r.move}（引擎評分 ${r.score>0?'+':''}${r.score}）`).join('\n');
+
+  const sysExplain=`你是一位精通象棋的大師級軍師，擅長用清晰的繁體中文解說棋局。
+請根據引擎計算出的走法，為每步棋撰寫詳細的戰略說明。
+僅回傳 JSON，格式如下，不要有任何其他文字：
+{
+  "situation": "一句話描述局面",
+  "steps": [
+    {"step_num":1,"type":"攻/守/兌/運子","reasoning":"詳細說明這步的戰略目的、威脅、變化"},
+    {"step_num":2,"type":"...","reasoning":"..."},
+    {"step_num":3,"type":"...","reasoning":"..."}
+  ],
+  "summary": "整體戰略組合的思路說明",
+  "warning": "局面需要注意的弱點或威脅，若無填 null"
+}`;
+
+  const userExplain=`目前棋局：${turnLabel}行棋，我執${sideLabel}。
+引擎推薦的走法：
+${movesDesc}
+請為每步棋撰寫詳細的戰略說明。`;
+
+  let explanation={situation:'',steps:[],summary:'',warning:null};
+  try {
+    const res2=await fetch(RENDER_API_URL,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        model:"claude-sonnet-4-20250514",
+        max_tokens:1000,
+        system:sysExplain,
+        messages:[{role:"user",content:userExplain}]
+      })
+    });
+    const data2=await res2.json();
+    if(!data2.error){
+      let raw2=data2.content.map(b=>b.text||'').join('').trim();
+      raw2=raw2.replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/\s*```$/i,'').trim();
+      explanation=JSON.parse(raw2);
+    }
+  } catch(e){ /* fallback to engine-only result */ }
+
+  stopThinking();
+
+  // ── Render ──
+  const typeColors={'攻':'#c0392b','守':'#2e7d32','兌':'#1565c0','運子':'#6a1599'};
+  let html=`
+    <div class="result-header">
+      <div class="result-badge">軍師分析</div>
+      <div class="result-divider"></div>
+    </div>
+    <div class="engine-tag">⚙ JS引擎 depth=3 · α-β剪枝 · 位置分表</div>`;
+
+  if(explanation.situation)
+    html+=`<div class="situation-card"><strong style="color:var(--gold);font-size:.72rem;letter-spacing:.2em;font-family:'Courier Prime',monospace;">局面態勢</strong><br>${explanation.situation}</div>`;
+
+  if(explanation.warning)
+    html+=`<div class="warn-card">⚠ <strong>注意：</strong>${explanation.warning}</div>`;
+
+  // Board with first move highlight
+  const firstMv=engineResults[0];
+  html+=`<div class="board-wrap">
+    <div class="board-title">▸ 辨識棋盤（首步走法高亮）</div>
+    ${renderBoard(engineBoard, firstMv?firstMv.from:null, firstMv?firstMv.to:null)}
+    ${visionNote?`<div style="margin-top:8px;font-size:.72rem;color:#9a7840;font-family:'Courier Prime',monospace;">✓ ${visionNote}</div>`:''}
+  </div>`;
+
+  // Step cards
+  engineResults.forEach((r,i)=>{
+    const exp=explanation.steps&&explanation.steps[i];
+    const type=exp?exp.type:'走棋';
+    const reasoning=exp?exp.reasoning:'（引擎計算最佳走法）';
+    const tc=typeColors[type]||'var(--gold)';
+    html+=`<div class="analysis-card">
+      <div class="card-step-header">
+        <div class="step-number">${r.step_num}</div>
+        <div class="step-move">${r.move}</div>
+        <div class="step-score">${r.score>0?'+':''}${r.score}</div>
+        ${r.fromBook?'<span style="font-size:.65rem;background:var(--gold);color:white;padding:1px 6px;border-radius:2px;font-family:Courier Prime,monospace;">開局庫</span>':''}
+        <div class="step-type" style="color:${tc}">【${type}】</div>
+      </div>
+      <div class="card-body">${reasoning.replace(/\n/g,'<br>')}</div>
+    </div>`;
+  });
+
+  if(explanation.summary)
+    html+=`<div class="summary-card"><div class="summary-label">▸ 整體戰略方向</div><div class="summary-text">${explanation.summary.replace(/\n/g,'<br>')}</div></div>`;
+
+  const ra=document.getElementById('result-area');
+  ra.innerHTML=html; ra.className='visible';
+  ra.scrollIntoView({behavior:'smooth',block:'start'});
+  btn.disabled=false;
+}
+</script>
+</body>
+</html>
